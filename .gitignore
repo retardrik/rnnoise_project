@@ -1,0 +1,8 @@
+venv/
+data/
+outputs/
+__pycache__/
+.ipynb_checkpoints/
+*.raw
+vscode_settings_backup_*.json
+*.zip
