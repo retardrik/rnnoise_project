@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Denoise Check</title>
+<style>
+:root {
+  --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --line: #e3e1dc;
+  --accent: #2f6fdb; --accent-text: #ffffff; --good: #1f8a4c; --bad: #c0392b; --rec: #d93025;
+  --soft: #eef2fb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141416; --card: #1d1d20; --text: #ececee; --muted: #9a9aa2; --line: #2e2e33;
+    --accent: #6b9cff; --accent-text: #0e1220; --good: #4cc983; --bad: #ff7a6b; --rec: #ff5a4f;
+    --soft: #222a3a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141416; --card: #1d1d20; --text: #ececee; --muted: #9a9aa2; --line: #2e2e33;
+  --accent: #6b9cff; --accent-text: #0e1220; --good: #4cc983; --bad: #ff7a6b; --rec: #ff5a4f;
+  --soft: #222a3a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
+h1 { font-size: 24px; margin: 0 0 2px; letter-spacing: -0.01em; }
+h2 { font-size: 15px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.sub { color: var(--muted); margin: 0 0 22px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button, .filebtn { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text);
+  border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+button:hover, .filebtn:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; padding: 10px 20px; }
+button.primary:disabled { opacity: .45; cursor: default; }
+button.rec { color: var(--rec); font-weight: 600; }
+button.rec.on { background: var(--rec); color: #fff; border-color: var(--rec); }
+.filebtn input { display: none; }
+.meter { flex: 1 1 160px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; min-width: 120px; }
+.meter div { height: 100%; width: 0; background: var(--good); transition: width 60ms; }
+.status { color: var(--muted); font-size: 14px; margin-top: 10px; min-height: 21px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg label { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+.seg input { display: none; }
+.seg label:has(input:checked) { background: var(--soft); border-color: var(--accent); color: var(--accent); }
+.seg label.disabled { opacity: .4; pointer-events: none; }
+.snr { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.snr input { flex: 1; max-width: 280px; }
+.hint { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.tile .k { color: var(--muted); font-size: 13px; }
+.tile .v { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tile .d { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.good { color: var(--good); } .bad { color: var(--bad); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+th, td { text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 500; }
+.tablewrap { overflow-x: auto; }
+.track { padding: 14px 0; border-top: 1px solid var(--line); }
+.track:first-of-type { border-top: 0; padding-top: 0; }
+.track .name { font-weight: 600; margin-bottom: 6px; }
+.track .name span { color: var(--muted); font-weight: 400; font-size: 13px; }
+.track audio { width: 100%; height: 36px; }
+.track img { width: 100%; display: block; margin-top: 6px; border-radius: 6px; }
+.error { color: var(--bad); }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Denoise check</h1>
+  <p class="sub">Record or upload speech, run it through <code>rnnoise_model.pt</code>, and compare with the spectral-subtraction baseline.</p>
+
+  <section class="card">
+    <h2>1 · Input</h2>
+    <div class="row">
+      <button id="recBtn" class="rec">● Record</button>
+      <div class="meter"><div id="meterBar"></div></div>
+      <label class="filebtn">Upload audio…<input id="fileIn" type="file" accept="audio/*,.wav,.flac,.ogg"></label>
+      <button id="sampleBtn">Use test_noisy.wav</button>
+    </div>
+    <div id="inStatus" class="status">No audio yet. Browser noise suppression is turned off while recording, so the model hears the raw mic.</div>
+    <audio id="inPlayer" class="hidden" controls style="width:100%;margin-top:8px"></audio>
+  </section>
+
+  <section class="card">
+    <h2>2 · Test noise</h2>
+    <div class="seg" id="noiseSeg">
+      <label><input type="radio" name="noise" value="none" checked>None, already noisy</label>
+      <label><input type="radio" name="noise" value="dataset">Real noise (dataset)</label>
+      <label><input type="radio" name="noise" value="white">White</label>
+      <label><input type="radio" name="noise" value="pink">Pink</label>
+      <label><input type="radio" name="noise" value="hum">Mains hum</label>
+    </div>
+    <div class="snr" id="snrRow">
+      <span>SNR</span><input id="snr" type="range" min="-5" max="20" step="1" value="5"><b id="snrVal">5 dB</b>
+    </div>
+    <p class="hint" id="noiseHint"></p>
+  </section>
+
+  <div class="row" style="margin-bottom:22px">
+    <button id="goBtn" class="primary" disabled>Denoise</button>
+    <span id="goStatus" class="status" style="margin:0"></span>
+  </div>
+
+  <section id="results" class="hidden">
+    <div class="tiles" id="tiles"></div>
+    <section class="card">
+      <h2>Comparison</h2>
+      <div class="tablewrap"><table id="table"></table></div>
+      <p class="hint" id="tableHint"></p>
+    </section>
+    <section class="card">
+      <h2>Listen &amp; look</h2>
+      <div id="tracks"></div>
+    </section>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let inputBlob = null;
+
+// ---------- recording (raw PCM via AudioWorklet, encoded to WAV) ----------
+const workletSrc = `
+class Grab extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+}
+registerProcessor('grab', Grab);`;
+let rec = null;
+
+async function startRec() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: {
+    echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+  const ctx = new AudioContext({ sampleRate: 48000 });
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([workletSrc], { type: 'text/javascript' })));
+  const src = ctx.createMediaStreamSource(stream);
+  const node = new AudioWorkletNode(ctx, 'grab');
+  const chunks = [];
+  const t0 = performance.now();
+  node.port.onmessage = e => {
+    chunks.push(e.data);
+    let peak = 0; for (const v of e.data) peak = Math.max(peak, Math.abs(v));
+    $('meterBar').style.width = Math.min(100, peak * 140) + '%';
+    $('inStatus').textContent = `Recording… ${((performance.now() - t0) / 1000).toFixed(1)} s (stops at 60 s)`;
+    if (performance.now() - t0 > 60000) stopRec();
+  };
+  src.connect(node);
+  rec = { stream, ctx, node, chunks };
+  $('recBtn').classList.add('on'); $('recBtn').textContent = '■ Stop';
+}
+
+function stopRec() {
+  if (!rec) return;
+  const { stream, ctx, node, chunks } = rec; rec = null;
+  node.disconnect(); stream.getTracks().forEach(t => t.stop());
+  const rate = ctx.sampleRate; ctx.close();
+  $('recBtn').classList.remove('on'); $('recBtn').textContent = '● Record';
+  $('meterBar').style.width = '0';
+  const n = chunks.reduce((a, c) => a + c.length, 0);
+  const pcm = new Float32Array(n); let o = 0;
+  for (const c of chunks) { pcm.set(c, o); o += c.length; }
+  setInput(encodeWav(pcm, rate), `Recorded ${(n / rate).toFixed(1)} s at ${rate / 1000} kHz`);
+}
+
+function encodeWav(pcm, rate) {
+  const buf = new ArrayBuffer(44 + pcm.length * 2), v = new DataView(buf);
+  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, pcm.length * 2, true);
+  for (let i = 0; i < pcm.length; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, pcm[i])) * 32767, true);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+$('recBtn').onclick = async () => {
+  if (rec) return stopRec();
+  try { await startRec(); }
+  catch (e) { $('inStatus').innerHTML = `<span class="error">Microphone not available: ${e.message}</span>`; }
+};
+
+// ---------- other inputs ----------
+function setInput(blob, label) {
+  inputBlob = blob;
+  $('inStatus').textContent = label;
+  const p = $('inPlayer'); p.src = URL.createObjectURL(blob); p.classList.remove('hidden');
+  $('goBtn').disabled = false;
+}
+$('fileIn').onchange = e => { const f = e.target.files[0]; if (f) setInput(f, `Loaded ${f.name}`); };
+$('sampleBtn').onclick = async () => {
+  const r = await fetch('/sample.wav');
+  if (!r.ok) { $('inStatus').innerHTML = '<span class="error">test_noisy.wav not found in the project</span>'; return; }
+  setInput(await r.blob(), 'Loaded test_noisy.wav (project sample, already noisy)');
+};
+
+// ---------- noise options ----------
+const noiseVal = () => document.querySelector('input[name=noise]:checked').value;
+function updateNoiseUi() {
+  const none = noiseVal() === 'none';
+  $('snrRow').style.opacity = none ? .4 : 1; $('snr').disabled = none;
+  $('noiseHint').textContent = none
+    ? 'Use this for audio that is already noisy (a fan, traffic, a café). There is no clean reference, so the scores are estimates from quiet vs. loud frames.'
+    : 'Record in a quiet room. Your recording becomes the clean reference, the noise is mixed in at the SNR below, and you get true SNR and STOI scores.';
+}
+document.querySelectorAll('input[name=noise]').forEach(r => r.onchange = updateNoiseUi);
+$('snr').oninput = () => $('snrVal').textContent = $('snr').value + ' dB';
+updateNoiseUi();
+fetch('/info').then(r => r.json()).then(i => {
+  if (!i.dataset_noise) {
+    const l = document.querySelector('input[value=dataset]').parentElement;
+    l.classList.add('disabled'); l.title = 'data\\ folder not found';
+  }
+  if (!i.sample) $('sampleBtn').classList.add('hidden');
+});
+
+// ---------- run ----------
+$('goBtn').onclick = async () => {
+  if (!inputBlob) return;
+  $('goBtn').disabled = true; $('goStatus').textContent = 'Denoising…';
+  const t0 = performance.now();
+  try {
+    const q = new URLSearchParams({ noise: noiseVal(), snr: $('snr').value });
+    const r = await fetch('/denoise?' + q, { method: 'POST', body: inputBlob });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    render(d);
+    $('goStatus').textContent = `Done in ${((performance.now() - t0) / 1000).toFixed(1)} s · ${d.seconds.toFixed(1)} s of audio`;
+  } catch (e) {
+    $('goStatus').innerHTML = `<span class="error">${e.message}</span>`;
+  } finally { $('goBtn').disabled = false; }
+};
+
+const f1 = x => x.toFixed(1), f2 = x => x.toFixed(2);
+const sign = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
+const cls = (x, goodIfPositive = true) => (goodIfPositive ? x > 0 : x < 0) ? 'good' : 'bad';
+
+function tile(k, v, d, c = '') {
+  return `<div class="tile"><div class="k">${k}</div><div class="v ${c}">${v}</div><div class="d">${d}</div></div>`;
+}
+
+function render(d) {
+  const t = d.tracks, i = t.input, o = t.ours, b = t.specsub;
+  const floorDrop = i.noise_floor_db - o.noise_floor_db;
+  const speechChange = o.speech_db - i.speech_db;
+  let tiles = '';
+  if (d.has_reference) {
+    tiles += tile('SNR improvement', sign(o.snr_db - i.snr_db) + ' dB',
+      `${f1(i.snr_db)} → ${f1(o.snr_db)} dB · baseline ${sign(b.snr_db - i.snr_db)} dB`, cls(o.snr_db - i.snr_db));
+    tiles += tile('Intelligibility (STOI)', f2(o.stoi), `noisy ${f2(i.stoi)} · baseline ${f2(b.stoi)}`, cls(o.stoi - i.stoi));
+  }
+  tiles += tile('Noise floor lowered by', f1(floorDrop) + ' dB',
+    `baseline: ${f1(i.noise_floor_db - b.noise_floor_db)} dB`, cls(floorDrop));
+  tiles += tile('Speech level change', sign(speechChange) + ' dB',
+    'near 0 means speech was kept', Math.abs(speechChange) < 3 ? 'good' : 'bad');
+  if (!d.has_reference)
+    tiles += tile('Estimated SNR', `${f1(i.est_snr_db)} → ${f1(o.est_snr_db)}`, 'dB, loud frames vs. quiet frames', cls(o.est_snr_db - i.est_snr_db));
+  $('tiles').innerHTML = tiles;
+
+  const rows = [['Noisy input', i], ['Ours (RNNoise model)', o], ['Spectral subtraction', b]];
+  let h = '<tr><th></th><th>Noise floor (dB)</th><th>Speech (dB)</th><th>Est. SNR (dB)</th>';
+  if (d.has_reference) h += '<th>SNR (dB)</th><th>STOI</th>';
+  h += '</tr>';
+  for (const [n, r] of rows) {
+    h += `<tr><td>${n}</td><td>${f1(r.noise_floor_db)}</td><td>${f1(r.speech_db)}</td><td>${f1(r.est_snr_db)}</td>`;
+    if (d.has_reference) h += `<td>${f1(r.snr_db)}</td><td>${f2(r.stoi)}</td>`;
+    h += '</tr>';
+  }
+  $('table').innerHTML = h;
+  $('tableHint').textContent = 'Noise floor = level of the quietest 10% of 20 ms frames; speech = the loudest 5%. ' +
+    (d.has_reference ? 'SNR and STOI are measured against your original recording.' : 'Add test noise in step 2 to get true SNR and STOI.');
+
+  const list = [];
+  if (t.clean) list.push(['Clean reference', 'your recording before noise was added', t.clean]);
+  list.push(['Noisy input', 'what the model received', i],
+            ['Ours', 'RNNoise model output', o],
+            ['Spectral subtraction', 'baseline.py, for comparison', b]);
+  $('tracks').innerHTML = list.map(([n, s, r]) => `
+    <div class="track"><div class="name">${n} <span>· ${s}</span></div>
+      <audio controls src="data:audio/wav;base64,${r.wav}"></audio>
+      <img alt="spectrogram of ${n}" src="data:image/png;base64,${r.spec}"></div>`).join('');
+  $('results').classList.remove('hidden');
+  $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+</body>
+</html>
