@@ -6,3 +6,5 @@ __pycache__/
 *.raw
 vscode_settings_backup_*.json
 *.zip
+install_torch.bat
+practice_model.pt
