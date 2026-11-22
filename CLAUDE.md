@@ -48,7 +48,10 @@ Proposed split: Rik owns the DSP files (stft, bands, ideal_gains, baseline, pitc
 - Setup done; official RNNoise verified on real speech; test set downloaded.
 - 2026-11-05: `src/stft.py` done — `vorbis_window`, `stft` (pad HOP zeros before / FRAME after, frame, window, rfft → frames × 481 bins) and `istft` (irfft, window, overlap-add, trim). Round-trip error 4.4e-16 on p232_001.
 - 2026-11-21: done — `bands.py` (22 triangular bands, band_energy eq. 2, interp_gains eq. 4; ideal-gain demo), `baseline.py` (spectral subtraction + SNR/STOI scoreboard), `features.py` (34 features: 22 BFCC + 6 deltas + 6 delta-deltas; pitch features skipped on purpose; targets = ideal gains + VAD), `dataset.py`, `model.py` (Fig. 3 GRU net, 84,359 weights), `train.py` (loss (√g − √ĝ)² + 0.5·BCE, 10% held out), `denoise.py` (includes gain smoothing eq. 9, λ = 0.6). Practice run on 100 test files: loss 0.45 → 0.28 in 30 epochs.
-- Next: full training on the friend's RTX 5080 (28-speaker training set), then evaluate over many test files, video, viva prep. Viva schedule emailed 14 Nov; demo video link must go in the schedule sheet before the slot.
+- 2026-11-22: full training done on a friend's RTX 5080 (28-speaker set, 3060 train / 339 check sequences, 100 epochs): loss 0.35 → 0.152 train, checking 0.283 → 0.178 (best epoch 98). `rnnoise_model.pt` + `train_log.txt` in repo; `demo/` local web page added by the friend (calls src/ only).
+- 2026-11-22: post-processing added in `denoise.py` (not in the paper): gain floor 0.1 (≈27% less gain flicker, STOI 0.890 → 0.896) and speech loudness normalisation to −20 dBFS using the model's VAD, capped at 0.99 peak.
+- Results on 21 unseen test files (before post-processing): SNR / STOI / pause-noise — noisy 6.6 / 0.873 / 0; spectral subtraction 8.5 / 0.870 / −2.6 dB; official RNNoise 12.0 / 0.885 / −14.1 dB; ours 12.6 / 0.890 / −11.9 dB; ideal gains 13.7 / 0.959 / −13.5 dB. Describe as comparable to official RNNoise, not better.
+- Next: final evaluation on more test files with final settings (STOI + SI-SNR, since loudness normalisation breaks plain SNR), spectrogram figures, loss graph, video, viva prep.
 - Update this section as steps are finished.
 
 ## Notes
